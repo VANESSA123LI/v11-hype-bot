@@ -1,0 +1,57 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: V11 Hype Bot - Slack Events API webhook on Lambda (Function URL).
+
+Parameters:
+  SlackBotToken:
+    Type: String
+    NoEcho: true
+    Description: Slack bot token (xoxb-...)
+  SlackSigningSecret:
+    Type: String
+    NoEcho: true
+    Description: Slack app signing secret
+  AnthropicApiKey:
+    Type: String
+    NoEcho: true
+    Description: Anthropic API key (sk-ant-...)
+  AnthropicModel:
+    Type: String
+    Default: claude-haiku-4-5
+    Description: Claude model id used to generate hype
+  TargetChannelId:
+    Type: String
+    Default: ""
+    Description: Optional Slack channel ID to restrict the bot to (the V11 channel). Empty = all channels the bot is in.
+
+Resources:
+  HypeBotFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: v11-hype-bot
+      CodeUri: ./
+      Handler: src/app.handler
+      Runtime: nodejs22.x
+      Architectures: [arm64]
+      MemorySize: 256
+      Timeout: 30
+      Environment:
+        Variables:
+          SLACK_BOT_TOKEN: !Ref SlackBotToken
+          SLACK_SIGNING_SECRET: !Ref SlackSigningSecret
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
+          ANTHROPIC_MODEL: !Ref AnthropicModel
+          TARGET_CHANNEL_ID: !Ref TargetChannelId
+      # Allow the function to asynchronously re-invoke itself (fast-ack pattern).
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: lambda:InvokeFunction
+              Resource: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:v11-hype-bot"
+      FunctionUrlConfig:
+        AuthType: NONE
+
+Outputs:
+  FunctionUrl:
+    Description: Paste this (with no trailing slash) into your Slack app's Event Subscriptions Request URL.
+    Value: !GetAtt HypeBotFunctionUrl.FunctionUrl

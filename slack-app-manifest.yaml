@@ -1,0 +1,39 @@
+# Slack App Manifest for the V11 Hype Bot.
+#
+# Use this if you want to (re)create or update the Slack app cleanly:
+#   https://api.slack.com/apps  ->  Create New App  ->  From a manifest
+#
+# After deploying to AWS, paste your Lambda Function URL into
+# settings.event_subscriptions.request_url below (no trailing slash),
+# then reinstall the app to the workspace.
+
+display_information:
+  name: V11 Hype Bot
+  description: The V11 hype man — reacts to every message with energy and love.
+  background_color: "#1a1a2e"
+
+features:
+  bot_user:
+    display_name: hype-bot
+    always_online: true
+
+oauth_config:
+  scopes:
+    bot:
+      - chat:write        # post hype replies
+      - reactions:write   # add emoji reactions
+      - channels:history   # receive messages in public channels
+      - groups:history     # receive messages in private channels
+      - users:read         # (optional) resolve author names
+
+settings:
+  event_subscriptions:
+    # Replace with your deployed Function URL, e.g.
+    # https://xxxxx.lambda-url.us-east-1.on.aws
+    request_url: REPLACE_WITH_YOUR_LAMBDA_FUNCTION_URL
+    bot_events:
+      - message.channels   # new messages in public channels
+      - message.groups     # new messages in private channels
+  org_deploy_enabled: false
+  socket_mode_enabled: false
+  token_rotation_enabled: false

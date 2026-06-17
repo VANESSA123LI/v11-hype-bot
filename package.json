@@ -1,0 +1,21 @@
+{
+  "name": "v11-hype-bot",
+  "version": "1.0.0",
+  "description": "A Slack hype-man bot for the V11 founder-builder community. Reacts to every new message with an emoji and a genuinely positive, AI-generated reply.",
+  "type": "module",
+  "main": "src/app.mjs",
+  "scripts": {
+    "build": "sam build",
+    "deploy": "sam deploy",
+    "deploy:guided": "sam build && sam deploy --guided",
+    "logs": "sam logs --stack-name v11-hype-bot --tail",
+    "test:local": "node test/local.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-lambda": "^3.620.0"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "license": "MIT"
+}
