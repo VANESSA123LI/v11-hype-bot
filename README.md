@@ -9,6 +9,12 @@ message in your channel and responds with:
   encouragement). Routine messages (links, logistics, "thanks") just get a
   reaction, so the channel stays clean.
 
+It's also **interactive**: when a member **directly tags `@Buddy`** (in the
+channel or inside a thread), Buddy switches to *answer mode* and responds to
+their question or comment using its full knowledge — startups, fundraising,
+product, general knowledge, whatever they ask. A direct mention **always** gets
+a reply.
+
 Replies are written by **Claude** (`claude-haiku-4-5` by default) and are
 specific to each message — celebrating wins, hyping ideas, and encouraging the
 hard days. Never sarcastic, never generic.
@@ -113,9 +119,12 @@ This calls Claude directly and prints the reaction + reply it would have posted.
 
 - **No infinite loops:** ignores messages from bots (including itself) and all
   message subtypes (edits, joins, deletes).
-- **Top-level only:** hypes new channel messages, not every thread reply.
-- **Reacts always, replies selectively:** Claude decides whether a message
-  warrants a text reply; routine messages get just an emoji.
+- **Top-level only for ambient hype:** hypes new channel messages, not every
+  thread reply — but a direct `@Buddy` mention is always answered, even in a thread.
+- **Reacts always, replies selectively:** for ambient messages Claude decides
+  whether a text reply is warranted; routine messages get just an emoji.
+- **Two modes:** ambient *hype mode* (`SYSTEM_PROMPT` in `src/hype.mjs`) and
+  interactive *answer mode* (`ANSWER_SYSTEM_PROMPT`) when directly tagged.
 - **No double-posts:** Slack retries are detected and ignored.
 - **Verified requests only:** every webhook is signature-checked before any work.
 - **Graceful fallback:** if Claude is unavailable, it posts a canned hype line.

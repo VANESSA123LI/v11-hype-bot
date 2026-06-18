@@ -11,8 +11,13 @@
 //   - Worker mode : invoked by ourselves with `{ __async: true, slackEvent }`.
 
 import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
-import { verifySlackSignature, postMessage, addReaction } from "./slack.mjs";
-import { generateHype } from "./hype.mjs";
+import {
+  verifySlackSignature,
+  postMessage,
+  addReaction,
+  getBotUserId,
+} from "./slack.mjs";
+import { generateHype, generateReply } from "./hype.mjs";
 
 const {
   SLACK_BOT_TOKEN,
@@ -24,6 +29,21 @@ const {
 } = process.env;
 
 const lambda = new LambdaClient({});
+
+// Resolve and cache the bot's own user id (so we can detect @mentions of it).
+// Cached across warm invocations; one auth.test per cold start.
+let cachedBotUserId = null;
+async function botUserId() {
+  if (cachedBotUserId === null) {
+    try {
+      cachedBotUserId = await getBotUserId(SLACK_BOT_TOKEN);
+    } catch (err) {
+      console.error("auth.test failed:", err.message);
+      cachedBotUserId = "";
+    }
+  }
+  return cachedBotUserId;
+}
 
 export async function handler(event) {
   // --- Worker mode: do the actual hype work. ---
@@ -60,7 +80,7 @@ export async function handler(event) {
     return reply(200, "ok (retry ignored)");
   }
 
-  if (body.type === "event_callback" && shouldHype(body.event)) {
+  if (body.type === "event_callback" && shouldForward(body.event)) {
     // Fire-and-forget: re-invoke ourselves async, then ack immediately.
     await lambda.send(
       new InvokeCommand({
@@ -76,32 +96,71 @@ export async function handler(event) {
   return reply(200, "ok");
 }
 
-/** Decide whether a message event deserves hype. */
-function shouldHype(e) {
+/** Cheap HTTP-path pre-filter: is this event worth handing to the worker? */
+function shouldForward(e) {
   if (!e || e.type !== "message") return false;
   // Skip edits, deletes, joins, channel system messages, etc.
   if (e.subtype) return false;
   // Skip anything posted by a bot (including ourselves) to avoid loops.
   if (e.bot_id) return false;
-  // Only hype top-level messages, not every thread reply.
-  if (e.thread_ts && e.thread_ts !== e.ts) return false;
-  // Need actual text to react to.
+  // Need actual text to work with.
   if (!e.text || !e.text.trim()) return false;
   // Optionally restrict to the V11 channel.
   if (TARGET_CHANNEL_ID && e.channel !== TARGET_CHANNEL_ID) return false;
+  // Top-level messages always go through (ambient hype). Thread replies only
+  // go through if they mention someone — possibly Buddy (confirmed in worker).
+  const isThreadReply = e.thread_ts && e.thread_ts !== e.ts;
+  if (isThreadReply && !e.text.includes("<@")) return false;
   return true;
 }
 
-/** The slow path: always react; reply in-thread only when warranted. */
+/**
+ * The slow path. Two modes:
+ *   - Mentioned (@Buddy): answer the user's question/comment directly, always.
+ *   - Ambient: always react; reply only when the message warrants hype.
+ */
 async function processMessage(e) {
   try {
+    const me = await botUserId();
+    const mentioned = me && e.text.includes(`<@${me}>`);
+    const isThreadReply = e.thread_ts && e.thread_ts !== e.ts;
+
+    // Thread replies that aren't aimed at Buddy are ignored.
+    if (isThreadReply && !mentioned) return;
+
+    // Reply into the existing thread if there is one, else start one.
+    const threadTs = e.thread_ts || e.ts;
+
+    if (mentioned) {
+      // --- Interactive mode: answer the question using Claude's knowledge. ---
+      const question = e.text.split(`<@${me}>`).join(" ").trim();
+      const { emoji, reply: answer } = await generateReply({
+        apiKey: ANTHROPIC_API_KEY,
+        model: ANTHROPIC_MODEL,
+        text: question,
+      });
+      await Promise.allSettled([
+        addReaction(SLACK_BOT_TOKEN, {
+          channel: e.channel,
+          timestamp: e.ts,
+          name: emoji,
+        }),
+        postMessage(SLACK_BOT_TOKEN, {
+          channel: e.channel,
+          text: answer,
+          thread_ts: threadTs,
+        }),
+      ]);
+      return;
+    }
+
+    // --- Ambient hype mode: always react, reply only when warranted. ---
     const { emoji, shouldReply, reply: hypeText } = await generateHype({
       apiKey: ANTHROPIC_API_KEY,
       model: ANTHROPIC_MODEL,
       text: e.text,
     });
 
-    // Always add the emoji reaction.
     const tasks = [
       addReaction(SLACK_BOT_TOKEN, {
         channel: e.channel,
@@ -109,18 +168,15 @@ async function processMessage(e) {
         name: emoji,
       }),
     ];
-
-    // Only post a threaded reply when Claude judged it worthwhile.
     if (shouldReply) {
       tasks.push(
         postMessage(SLACK_BOT_TOKEN, {
           channel: e.channel,
           text: hypeText,
-          thread_ts: e.ts,
+          thread_ts: threadTs,
         })
       );
     }
-
     await Promise.allSettled(tasks);
   } catch (err) {
     console.error("processMessage failed:", err);

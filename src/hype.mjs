@@ -76,28 +76,13 @@ export async function generateHype({ apiKey, model, text, userName }) {
   const userPrompt = `${who} this message in the V11 channel:\n\n"""${text}"""\n\nHype them up.`;
 
   try {
-    const res = await fetch(ANTHROPIC_API, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 300,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content: userPrompt }],
-      }),
+    const raw = await callClaude({
+      apiKey,
+      model,
+      system: SYSTEM_PROMPT,
+      userPrompt,
+      maxTokens: 300,
     });
-
-    if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`anthropic ${res.status}: ${body}`);
-    }
-
-    const data = await res.json();
-    const raw = (data.content?.[0]?.text ?? "").trim();
     const parsed = parseJson(raw);
 
     const emoji = ALLOWED_EMOJI.includes(parsed.emoji) ? parsed.emoji : "fire";
@@ -109,6 +94,82 @@ export async function generateHype({ apiKey, model, text, userName }) {
     console.error("generateHype failed, using fallback:", err.message);
     return pickFallback();
   }
+}
+
+const ANSWER_SYSTEM_PROMPT = `You are Buddy, the AI companion for V11 — an entrepreneurial society founded by Vatsalya and Jasper, a tight-knit community of ambitious builders and founders. A member has directly tagged you (@Buddy) in the channel with a question or comment.
+
+Your job: respond helpfully, accurately, and concisely using your full knowledge — startups, fundraising, product, engineering, careers, general knowledge, whatever they ask. You're a sharp, supportive friend who's always in their corner: warm, a little playful, but genuinely USEFUL. Prioritize actually answering over hyping.
+
+Rules:
+- Answer the question or address the comment directly and substantively.
+- If you genuinely don't know, or it depends on private info you can't have, say so honestly — never make things up.
+- Keep it to a few sentences when you can; go longer only when the question truly needs it.
+- Use Slack formatting only: *bold* with single asterisks, _italics_, \`code\`, bullet lists. No markdown # headers.
+- Stay positive and encouraging, never condescending or preachy.
+- Pick ONE reaction emoji that fits, from this exact list: ${ALLOWED_EMOJI.join(", ")}.
+
+Respond with ONLY a JSON object, no other text:
+{"emoji": "<one emoji name from the list>", "reply": "<your response>"}`;
+
+/**
+ * Interactive mode: answer a member who directly tagged Buddy.
+ * Always returns a reply (Buddy never ignores a direct mention).
+ *
+ * @param {object} opts
+ * @param {string} opts.apiKey
+ * @param {string} opts.model
+ * @param {string} opts.text    The member's message (with the @Buddy mention removed)
+ * @returns {Promise<{emoji: string, reply: string}>}
+ */
+export async function generateReply({ apiKey, model, text }) {
+  const userPrompt = `A V11 member tagged you and said:\n\n"""${text}"""\n\nRespond.`;
+  try {
+    const raw = await callClaude({
+      apiKey,
+      model,
+      system: ANSWER_SYSTEM_PROMPT,
+      userPrompt,
+      maxTokens: 800,
+    });
+    const parsed = parseJson(raw);
+    const emoji = ALLOWED_EMOJI.includes(parsed.emoji) ? parsed.emoji : "raised_hands";
+    const reply =
+      (parsed.reply ?? "").trim() ||
+      "Hey! I'm here — ask me anything and I'll do my best. 🙌";
+    return { emoji, reply };
+  } catch (err) {
+    console.error("generateReply failed, using fallback:", err.message);
+    return {
+      emoji: "raised_hands",
+      reply: "Hey! I'm here — got a little tangled up just now, try me again? 🙌",
+    };
+  }
+}
+
+/** Shared call to the Anthropic Messages API. Returns the raw text content. */
+async function callClaude({ apiKey, model, system, userPrompt, maxTokens }) {
+  const res = await fetch(ANTHROPIC_API, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: maxTokens,
+      system,
+      messages: [{ role: "user", content: userPrompt }],
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`anthropic ${res.status}: ${body}`);
+  }
+
+  const data = await res.json();
+  return (data.content?.[0]?.text ?? "").trim();
 }
 
 function parseJson(raw) {
