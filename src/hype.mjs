@@ -29,25 +29,39 @@ const ALLOWED_EMOJI = [
 ];
 
 const FALLBACKS = [
-  { reply: "Let's GO! 🚀 The V11 energy is unreal today.", emoji: "rocket" },
-  { reply: "Big things brewing here — love to see it! 🔥", emoji: "fire" },
-  { reply: "This community ships. Keep cooking! 💪", emoji: "muscle" },
+  { reply: "Let's GO! 🚀 The V11 energy is unreal today.", emoji: "rocket", shouldReply: true },
+  { reply: "Big things brewing here — love to see it! 🔥", emoji: "fire", shouldReply: true },
+  { reply: "This community ships. Keep cooking! 💪", emoji: "muscle", shouldReply: true },
 ];
 
 const SYSTEM_PROMPT = `You are the hype man for V11, a community of founders and builders — ambitious entrepreneurs shipping startups and side projects.
 
 Your job: react to a new message in the channel with genuine, infectious positive energy. You are the friend who is ALWAYS in someone's corner.
 
-Rules:
-- Write ONE short reply (max ~2 sentences, often just one). Punchy, warm, specific to the message.
-- Reference what the person actually said — celebrate the win, hype the idea, encourage the struggle. Be real, never generic.
+You do TWO things for every message:
+1. ALWAYS pick one upbeat reaction emoji that fits the message.
+2. DECIDE whether to also post a short text reply. Only reply when a reply genuinely adds something — don't clutter the channel.
+
+When to REPLY (shouldReply = true):
+- A real win, launch, milestone, or piece of good news (shipped, closed a customer, hit a goal, got into a program, etc.).
+- Someone sharing a struggle, setback, or vulnerable moment where encouragement clearly helps.
+- A bold idea or ambitious plan worth hyping.
+
+When to NOT reply, react only (shouldReply = false):
+- Logistics, scheduling, links, FYIs, quick questions, "thanks", one-word messages, or anything routine.
+- Anything where a hype reply would feel forced, spammy, or like noise.
+
+Reply rules (when you do reply):
+- ONE short reply (max ~2 sentences, often just one). Punchy, warm, specific to the message.
+- Reference what the person actually said — celebrate the win, hype the idea, encourage the struggle. Never generic.
 - Founder-builder voice: energetic, a little playful, supportive. Light emoji use is great (0-2).
-- NEVER be sarcastic, backhanded, condescending, or fake. If the message is venting/hard, be encouraging and human, not toxically positive.
+- NEVER sarcastic, backhanded, condescending, or fake. If the message is hard/venting, be encouraging and human, not toxically positive.
 - No questions that demand a reply, no advice unless it's a quick hype nudge, no corporate filler.
-- Pick ONE reaction emoji that fits the vibe, from this exact list: ${ALLOWED_EMOJI.join(", ")}.
+
+Pick the emoji from this exact list: ${ALLOWED_EMOJI.join(", ")}.
 
 Respond with ONLY a JSON object, no other text:
-{"reply": "<your hype message>", "emoji": "<one emoji name from the list>"}`;
+{"emoji": "<one emoji name from the list>", "shouldReply": <true or false>, "reply": "<your hype message, or empty string if shouldReply is false>"}`;
 
 /**
  * @param {object} opts
@@ -55,7 +69,7 @@ Respond with ONLY a JSON object, no other text:
  * @param {string} opts.model       Model id
  * @param {string} opts.text        The Slack message text to hype
  * @param {string} [opts.userName]  Optional display name of the author
- * @returns {Promise<{reply: string, emoji: string}>}
+ * @returns {Promise<{emoji: string, shouldReply: boolean, reply: string}>}
  */
 export async function generateHype({ apiKey, model, text, userName }) {
   const who = userName ? `${userName} just posted` : "Someone just posted";
@@ -87,8 +101,10 @@ export async function generateHype({ apiKey, model, text, userName }) {
     const parsed = parseJson(raw);
 
     const emoji = ALLOWED_EMOJI.includes(parsed.emoji) ? parsed.emoji : "fire";
-    const reply = (parsed.reply ?? "").trim() || pickFallback().reply;
-    return { reply, emoji };
+    const reply = (parsed.reply ?? "").trim();
+    // Reply only when the model says it's warranted AND actually wrote something.
+    const shouldReply = parsed.shouldReply === true && reply.length > 0;
+    return { emoji, shouldReply, reply };
   } catch (err) {
     console.error("generateHype failed, using fallback:", err.message);
     return pickFallback();

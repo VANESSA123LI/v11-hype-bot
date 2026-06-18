@@ -92,28 +92,36 @@ function shouldHype(e) {
   return true;
 }
 
-/** The slow path: generate hype, react, and reply in-thread. */
+/** The slow path: always react; reply in-thread only when warranted. */
 async function processMessage(e) {
   try {
-    const { reply: hypeText, emoji } = await generateHype({
+    const { emoji, shouldReply, reply: hypeText } = await generateHype({
       apiKey: ANTHROPIC_API_KEY,
       model: ANTHROPIC_MODEL,
       text: e.text,
     });
 
-    // React on the original message; reply in its thread.
-    await Promise.allSettled([
+    // Always add the emoji reaction.
+    const tasks = [
       addReaction(SLACK_BOT_TOKEN, {
         channel: e.channel,
         timestamp: e.ts,
         name: emoji,
       }),
-      postMessage(SLACK_BOT_TOKEN, {
-        channel: e.channel,
-        text: hypeText,
-        thread_ts: e.ts,
-      }),
-    ]);
+    ];
+
+    // Only post a threaded reply when Claude judged it worthwhile.
+    if (shouldReply) {
+      tasks.push(
+        postMessage(SLACK_BOT_TOKEN, {
+          channel: e.channel,
+          text: hypeText,
+          thread_ts: e.ts,
+        })
+      );
+    }
+
+    await Promise.allSettled(tasks);
   } catch (err) {
     console.error("processMessage failed:", err);
   }

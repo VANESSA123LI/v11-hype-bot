@@ -3,9 +3,11 @@
 A Slack **hype man** for the V11 founder-builder community. It watches every new
 message in your channel and responds with:
 
-- an upbeat **emoji reaction** on the message, and
-- a short, genuine, **AI-generated hype reply** posted in a thread (so the
-  channel stays clean).
+- an upbeat **emoji reaction** on **every** message, and
+- a short, genuine, **AI-generated hype reply** posted in a thread — but **only
+  when it's warranted** (a real win, milestone, or moment that deserves
+  encouragement). Routine messages (links, logistics, "thanks") just get a
+  reaction, so the channel stays clean.
 
 Replies are written by **Claude** (`claude-haiku-4-5` by default) and are
 specific to each message — celebrating wins, hyping ideas, and encouraging the
@@ -112,6 +114,8 @@ This calls Claude directly and prints the reaction + reply it would have posted.
 - **No infinite loops:** ignores messages from bots (including itself) and all
   message subtypes (edits, joins, deletes).
 - **Top-level only:** hypes new channel messages, not every thread reply.
+- **Reacts always, replies selectively:** Claude decides whether a message
+  warrants a text reply; routine messages get just an emoji.
 - **No double-posts:** Slack retries are detected and ignored.
 - **Verified requests only:** every webhook is signature-checked before any work.
 - **Graceful fallback:** if Claude is unavailable, it posts a canned hype line.

@@ -21,11 +21,14 @@ const samples = process.argv.slice(2).length
       "Closed our first paying customer today!!",
       "honestly kind of burnt out, the demo broke during my pitch and I'm second-guessing everything",
       "Quick win: rewrote our onboarding and signups are up 40%",
+      "hey does anyone have the link to the deck from last week?",
+      "thanks!",
     ];
 
 for (const text of samples) {
   const out = await generateHype({ apiKey, model, text });
-  console.log("\nMESSAGE: ", text);
-  console.log("REACTION::" + out.emoji + ":");
-  console.log("REPLY:   ", out.reply);
+  console.log("\nMESSAGE:  ", text);
+  console.log("REACTION:  :" + out.emoji + ":");
+  console.log("REPLY?:    ", out.shouldReply ? "yes" : "no (react only)");
+  if (out.shouldReply) console.log("REPLY:     ", out.reply);
 }
