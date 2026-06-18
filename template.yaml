@@ -21,8 +21,8 @@ Parameters:
     Description: Claude model id used to generate hype
   TargetChannelId:
     Type: String
-    Default: ""
-    Description: Optional Slack channel ID to restrict the bot to (the V11 channel). Empty = all channels the bot is in.
+    Default: "C08LKRUL3AB"
+    Description: Slack channel ID to restrict the bot to (the V11 channel). Empty = all channels the bot is in.
 
 Resources:
   HypeBotFunction:

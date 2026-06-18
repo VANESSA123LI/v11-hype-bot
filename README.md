@@ -69,8 +69,9 @@ sam deploy --guided \
   --parameter-overrides \
     SlackBotToken=xoxb-... \
     SlackSigningSecret=... \
-    AnthropicApiKey=sk-ant-... \
-    TargetChannelId=C0XXXXXXX   # optional: lock to the V11 channel only
+    AnthropicApiKey=sk-ant-...
+# The bot is locked to the V11 channel (C08LKRUL3AB) by default — see template.yaml.
+# To hype every channel it's invited to instead, add: TargetChannelId=""
 ```
 
 When it finishes, SAM prints a **`FunctionUrl`** output, e.g.
