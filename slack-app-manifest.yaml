@@ -14,7 +14,7 @@ display_information:
 
 features:
   bot_user:
-    display_name: hype-bot
+    display_name: Buddy
     always_online: true
 
 oauth_config:
