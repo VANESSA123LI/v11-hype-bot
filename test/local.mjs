@@ -1,10 +1,9 @@
-// Quick local sanity check for the hype generator.
-// Usage:  ANTHROPIC_API_KEY=sk-ant-... node test/local.mjs "I just shipped my MVP!"
-//
-// Exercises only the Claude call (no AWS, no Slack) so you can confirm the
-// vibe before deploying.
+// Quick local sanity check for the generators (no AWS, no Slack).
+// Usage:
+//   Hype:   ANTHROPIC_API_KEY=sk-ant-... node test/local.mjs "I just shipped my MVP!"
+//   Reply:  ANTHROPIC_API_KEY=sk-ant-... node test/local.mjs --reply "what's a good name for my app?"
 
-import { generateHype } from "../src/hype.mjs";
+import { generateHype, generateReply } from "../src/hype.mjs";
 
 const apiKey = process.env.ANTHROPIC_API_KEY;
 const model = process.env.ANTHROPIC_MODEL || "claude-haiku-4-5";
@@ -12,6 +11,26 @@ const model = process.env.ANTHROPIC_MODEL || "claude-haiku-4-5";
 if (!apiKey) {
   console.error("Set ANTHROPIC_API_KEY first.");
   process.exit(1);
+}
+
+// --reply mode: exercise the interactive answer path (with a small fake thread).
+if (process.argv[2] === "--reply") {
+  const question = process.argv.slice(3).join(" ") || "what should I focus on this week?";
+  const thread = [
+    { user: "U_USER", text: "starting a tool that summarizes Slack threads" },
+    { user: "U_BUDDY", text: "Love it — that's a real pain point! 🔥" },
+  ];
+  const out = await generateReply({
+    apiKey,
+    model,
+    text: question,
+    thread,
+    botUserId: "U_BUDDY",
+  });
+  console.log("\nQUESTION:  ", question);
+  console.log("REACTION:  :" + out.emoji + ":");
+  console.log("REPLY:     ", out.reply);
+  process.exit(0);
 }
 
 const samples = process.argv.slice(2).length

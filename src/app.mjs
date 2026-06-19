@@ -16,6 +16,7 @@ import {
   postMessage,
   addReaction,
   getBotUserId,
+  getThreadReplies,
 } from "./slack.mjs";
 import { generateHype, generateReply } from "./hype.mjs";
 
@@ -107,17 +108,18 @@ function shouldForward(e) {
   if (!e.text || !e.text.trim()) return false;
   // Optionally restrict to the V11 channel.
   if (TARGET_CHANNEL_ID && e.channel !== TARGET_CHANNEL_ID) return false;
-  // Top-level messages always go through (ambient hype). Thread replies only
-  // go through if they mention someone — possibly Buddy (confirmed in worker).
-  const isThreadReply = e.thread_ts && e.thread_ts !== e.ts;
-  if (isThreadReply && !e.text.includes("<@")) return false;
+  // Everything else goes to the worker. Top-level posts get ambient hype;
+  // thread replies are forwarded too so the worker can check whether Buddy is
+  // part of the thread (it answers replies in its own threads, tagged or not).
   return true;
 }
 
 /**
  * The slow path. Two modes:
- *   - Mentioned (@Buddy): answer the user's question/comment directly, always.
- *   - Ambient: always react; reply only when the message warrants hype.
+ *   - Interactive: Buddy is tagged (@Buddy), OR someone replies in a thread
+ *     Buddy is already part of. Answer the question/comment, using the thread
+ *     as context.
+ *   - Ambient: a fresh top-level post — always react; reply only if warranted.
  */
 async function processMessage(e) {
   try {
@@ -125,19 +127,38 @@ async function processMessage(e) {
     const mentioned = me && e.text.includes(`<@${me}>`);
     const isThreadReply = e.thread_ts && e.thread_ts !== e.ts;
 
-    // Thread replies that aren't aimed at Buddy are ignored.
-    if (isThreadReply && !mentioned) return;
+    // Pull thread context when the message lives in a thread. Never let a
+    // context-fetch failure block a reply — degrade to no context instead.
+    let thread = [];
+    if (isThreadReply) {
+      try {
+        thread = await getThreadReplies(SLACK_BOT_TOKEN, {
+          channel: e.channel,
+          ts: e.thread_ts,
+        });
+      } catch (err) {
+        console.error("getThreadReplies failed, continuing without context:", err.message);
+      }
+    }
+
+    // Interactive if tagged anywhere, or an untagged reply in a thread Buddy is
+    // already in (someone is talking to it). Otherwise an unrelated thread reply.
+    const botInThread = me && thread.some((m) => m.user === me);
+    const interactive = mentioned || (isThreadReply && botInThread);
+    if (isThreadReply && !interactive) return;
 
     // Reply into the existing thread if there is one, else start one.
     const threadTs = e.thread_ts || e.ts;
 
-    if (mentioned) {
-      // --- Interactive mode: answer the question using Claude's knowledge. ---
-      const question = e.text.split(`<@${me}>`).join(" ").trim();
+    if (interactive) {
+      // --- Interactive mode: answer the member, using the thread for context. ---
+      const question = me ? e.text.split(`<@${me}>`).join(" ").trim() : e.text.trim();
       const { emoji, reply: answer } = await generateReply({
         apiKey: ANTHROPIC_API_KEY,
         model: ANTHROPIC_MODEL,
         text: question,
+        thread,
+        botUserId: me,
       });
       await Promise.allSettled([
         addReaction(SLACK_BOT_TOKEN, {

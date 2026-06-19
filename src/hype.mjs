@@ -112,17 +112,22 @@ Respond with ONLY a JSON object, no other text:
 {"emoji": "<one emoji name from the list>", "reply": "<your response>"}`;
 
 /**
- * Interactive mode: answer a member who directly tagged Buddy.
- * Always returns a reply (Buddy never ignores a direct mention).
+ * Interactive mode: answer a member who tagged Buddy, or replied in a thread
+ * Buddy is part of. Always returns a reply (Buddy never ignores a direct turn).
  *
  * @param {object} opts
- * @param {string} opts.apiKey
- * @param {string} opts.model
- * @param {string} opts.text    The member's message (with the @Buddy mention removed)
+ * @param {string}  opts.apiKey
+ * @param {string}  opts.model
+ * @param {string}  opts.text        The member's message (with the @Buddy mention removed)
+ * @param {Array}   [opts.thread]    Prior thread messages ([{ user, text }, ...]), oldest first
+ * @param {string}  [opts.botUserId] Buddy's own user id (to label its turns)
  * @returns {Promise<{emoji: string, reply: string}>}
  */
-export async function generateReply({ apiKey, model, text }) {
-  const userPrompt = `A V11 member tagged you and said:\n\n"""${text}"""\n\nRespond.`;
+export async function generateReply({ apiKey, model, text, thread, botUserId }) {
+  const context = formatThread(thread, botUserId);
+  const userPrompt = context
+    ? `Here's the thread so far (oldest first):\n\n${context}\n\nThe member just turned to you and said:\n\n"""${text}"""\n\nRespond, using the thread for context.`
+    : `A V11 member tagged you and said:\n\n"""${text}"""\n\nRespond.`;
   try {
     const raw = await callClaude({
       apiKey,
@@ -177,6 +182,18 @@ function parseJson(raw) {
   const match = raw.match(/\{[\s\S]*\}/);
   if (!match) throw new Error("no JSON in model output");
   return JSON.parse(match[0]);
+}
+
+/** Render thread messages as a readable transcript for the prompt. */
+function formatThread(thread, botUserId) {
+  if (!Array.isArray(thread) || thread.length === 0) return "";
+  return thread
+    .filter((m) => m.text && m.text.trim())
+    .map((m) => {
+      const who = m.user === botUserId ? "You (Buddy)" : `User ${m.user ?? "?"}`;
+      return `${who}: ${m.text.trim()}`;
+    })
+    .join("\n");
 }
 
 function pickFallback() {
