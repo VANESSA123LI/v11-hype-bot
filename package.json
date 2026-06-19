@@ -8,7 +8,8 @@
     "build": "sam build",
     "deploy": "sam deploy",
     "deploy:guided": "sam build && sam deploy --guided",
-    "logs": "sam logs --stack-name v11-hype-bot --tail",
+    "deploy:code": "npm install --omit=dev --no-audit --no-fund && rm -f /tmp/v11-hype-bot.zip && zip -rq /tmp/v11-hype-bot.zip src node_modules package.json && aws lambda update-function-code --function-name v11-hype-bot --zip-file fileb:///tmp/v11-hype-bot.zip --no-cli-pager && aws lambda wait function-updated --function-name v11-hype-bot && echo 'deployed to v11-hype-bot'",
+    "logs": "aws logs tail /aws/lambda/v11-hype-bot --since 10m --format short",
     "test:local": "node test/local.mjs"
   },
   "dependencies": {
