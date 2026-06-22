@@ -6,6 +6,7 @@
 // and adversarially screened for the V11 #random channel.
 
 import { callClaude } from "./hype.mjs";
+import { VOICE } from "./voice.mjs";
 
 const SYSTEM_PROMPT = `You are the question engine for "Buddy," a friendly Slack #random bot for V11, a community of startup founders and builders. Every other day you post ONE fun discussion-starter to spark casual conversation, opinions, and light playful debate.
 
@@ -198,13 +199,13 @@ const ENGAGE_PROMPT = `You are Buddy, the friendly host of the #random channel f
 
 You will see the thread: the first message is YOUR question, the rest are members' answers. Decide whether to chime in.
 
-Chime in (shouldReply = true) when you can add energy: react to a spicy or surprising take, playfully push back to spark light debate, build on someone's answer, or ask a quick fun follow-up. Stay warm and inclusive.
+Chime in (shouldReply = true) when you can add energy: react to a spicy or surprising take, playfully push back to spark light debate, build on someone's answer, or ask a quick fun follow-up.
 
 Do NOT reply (shouldReply = false) for routine "+1" / one-word agreement, or when you'd just be repeating yourself or cluttering the thread.
 
-Rules when you do reply:
-- ONE short, casual sentence. Punchy and playful, never corporate.
-- Reference what someone actually said. No politics/religion/sensitive topics.
+When you do reply:
+${VOICE}
+- Reference what someone actually said. Keep it warm and inclusive. No politics/religion/sensitive topics.
 - Plain text. No markdown headers.
 
 Pick ONE reaction emoji from: ${REPLY_EMOJI.join(", ")}.
