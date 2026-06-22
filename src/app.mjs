@@ -17,8 +17,10 @@ import {
   addReaction,
   getBotUserId,
   getThreadReplies,
+  getRecentBotPosts,
 } from "./slack.mjs";
 import { generateHype, generateReply } from "./hype.mjs";
+import { generateQuestion, generateDiscussionReply } from "./discussion.mjs";
 
 const {
   SLACK_BOT_TOKEN,
@@ -26,6 +28,7 @@ const {
   ANTHROPIC_API_KEY,
   ANTHROPIC_MODEL = "claude-haiku-4-5",
   TARGET_CHANNEL_ID = "", // optional: restrict to one channel (the V11 channel)
+  RANDOM_CHANNEL_ID = "", // #random — where scheduled discussion questions post
   AWS_LAMBDA_FUNCTION_NAME,
 } = process.env;
 
@@ -47,6 +50,12 @@ async function botUserId() {
 }
 
 export async function handler(event) {
+  // --- Cron mode: EventBridge schedule fires us to post a discussion question. ---
+  if (event && event.__cron === "discussion") {
+    await postDiscussionQuestion();
+    return { ok: true };
+  }
+
   // --- Worker mode: do the actual hype work. ---
   if (event && event.__async) {
     await processMessage(event.slackEvent);
@@ -151,6 +160,34 @@ async function processMessage(e) {
     const threadTs = e.thread_ts || e.ts;
 
     if (interactive) {
+      // Discussion thread: someone is weighing in on a question Buddy posted to
+      // #random (thread root is Buddy's). Host the thread — react, and chime in
+      // when it adds energy — rather than answering like a tagged question.
+      const isDiscussionThread =
+        RANDOM_CHANNEL_ID &&
+        e.channel === RANDOM_CHANNEL_ID &&
+        thread[0] &&
+        thread[0].user === me;
+
+      if (isDiscussionThread && !mentioned) {
+        const { emoji, shouldReply, reply: text } = await generateDiscussionReply({
+          apiKey: ANTHROPIC_API_KEY,
+          model: ANTHROPIC_MODEL,
+          thread,
+          botUserId: me,
+        });
+        const tasks = [
+          addReaction(SLACK_BOT_TOKEN, { channel: e.channel, timestamp: e.ts, name: emoji }),
+        ];
+        if (shouldReply) {
+          tasks.push(
+            postMessage(SLACK_BOT_TOKEN, { channel: e.channel, text, thread_ts: threadTs })
+          );
+        }
+        await Promise.allSettled(tasks);
+        return;
+      }
+
       // --- Interactive mode: answer the member, using the thread for context. ---
       const question = me ? e.text.split(`<@${me}>`).join(" ").trim() : e.text.trim();
       const { emoji, reply: answer } = await generateReply({
@@ -201,6 +238,42 @@ async function processMessage(e) {
     await Promise.allSettled(tasks);
   } catch (err) {
     console.error("processMessage failed:", err);
+  }
+}
+
+/**
+ * Cron path: generate a fresh discussion-starter and post it (top-level) to
+ * #random. Avoids repeating any of the bot's own questions from the last 60 days.
+ */
+async function postDiscussionQuestion() {
+  if (!RANDOM_CHANNEL_ID) {
+    console.error("postDiscussionQuestion: RANDOM_CHANNEL_ID not set; skipping");
+    return;
+  }
+  try {
+    const me = await botUserId();
+    const sixtyDaysAgo = String(Math.floor(Date.now() / 1000) - 60 * 24 * 60 * 60);
+    let recentQuestions = [];
+    try {
+      recentQuestions = await getRecentBotPosts(SLACK_BOT_TOKEN, {
+        channel: RANDOM_CHANNEL_ID,
+        oldestTs: sixtyDaysAgo,
+        botUserId: me,
+      });
+    } catch (err) {
+      console.error("getRecentBotPosts failed, generating without dedup list:", err.message);
+    }
+
+    const question = await generateQuestion({
+      apiKey: ANTHROPIC_API_KEY,
+      model: ANTHROPIC_MODEL,
+      recentQuestions,
+    });
+
+    await postMessage(SLACK_BOT_TOKEN, { channel: RANDOM_CHANNEL_ID, text: question });
+    console.log(`posted discussion question (avoided ${recentQuestions.length} recent): ${question}`);
+  } catch (err) {
+    console.error("postDiscussionQuestion failed:", err);
   }
 }
 

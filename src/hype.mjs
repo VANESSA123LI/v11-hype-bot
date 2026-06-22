@@ -153,7 +153,7 @@ export async function generateReply({ apiKey, model, text, thread, botUserId }) 
 }
 
 /** Shared call to the Anthropic Messages API. Returns the raw text content. */
-async function callClaude({ apiKey, model, system, userPrompt, maxTokens }) {
+export async function callClaude({ apiKey, model, system, userPrompt, maxTokens }) {
   const res = await fetch(ANTHROPIC_API, {
     method: "POST",
     headers: {

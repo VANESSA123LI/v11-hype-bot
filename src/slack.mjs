@@ -100,3 +100,28 @@ export async function getThreadReplies(token, { channel, ts }) {
   });
   return data.messages ?? [];
 }
+
+/**
+ * Return the text of the bot's own top-level posts in a channel since `oldestTs`
+ * (a unix-seconds string). Used to avoid repeating discussion questions. Pages
+ * through history; capped so a busy channel can't run us forever.
+ */
+export async function getRecentBotPosts(token, { channel, oldestTs, botUserId, maxPages = 5 }) {
+  const texts = [];
+  let cursor;
+  for (let page = 0; page < maxPages; page++) {
+    const params = { channel, oldest: oldestTs, limit: "200" };
+    if (cursor) params.cursor = cursor;
+    const data = await slackGet(token, "conversations.history", params);
+    for (const m of data.messages ?? []) {
+      // Top-level posts only (skip thread replies), authored by the bot.
+      const topLevel = !m.thread_ts || m.thread_ts === m.ts;
+      if (m.user === botUserId && topLevel && m.text && m.text.trim()) {
+        texts.push(m.text.trim());
+      }
+    }
+    cursor = data.response_metadata?.next_cursor;
+    if (!cursor) break;
+  }
+  return texts;
+}
