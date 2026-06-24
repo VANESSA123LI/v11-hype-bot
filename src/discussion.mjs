@@ -6,7 +6,6 @@
 // and adversarially screened for the V11 #random channel.
 
 import { callClaude } from "./hype.mjs";
-import { VOICE } from "./voice.mjs";
 
 const SYSTEM_PROMPT = `You are the question engine for "Buddy," a friendly Slack #random bot for V11, a community of startup founders and builders. Every other day you post ONE fun discussion-starter to spark casual conversation, opinions, and light playful debate.
 
@@ -158,12 +157,6 @@ const QUESTION_BANK = [
   "If you could freeze time for everyone but yourself, what's the first thing you'd do?"
 ];
 
-// Standard Slack emoji Buddy may react with in discussion threads.
-const REPLY_EMOJI = [
-  "fire", "eyes", "100", "sparkles", "raised_hands",
-  "joy", "thinking_face", "heart", "clap", "tada",
-];
-
 /**
  * Generate one fresh discussion-starter question.
  * @param {object} opts
@@ -192,52 +185,6 @@ export async function generateQuestion({ apiKey, model, recentQuestions = [] }) 
   } catch (err) {
     console.error("generateQuestion failed, using bank:", err.message);
     return pickFromBank(recentQuestions);
-  }
-}
-
-const ENGAGE_PROMPT = `You are Buddy, the friendly host of the #random channel for V11, a community of founders and builders. You posted a fun discussion question and people are weighing in.
-
-You will see the thread: the first message is YOUR question, the rest are members' answers. Decide whether to chime in.
-
-Chime in (shouldReply = true) when you can add energy: react to a spicy or surprising take, playfully push back to spark light debate, build on someone's answer, or ask a quick fun follow-up.
-
-Do NOT reply (shouldReply = false) for routine "+1" / one-word agreement, or when you'd just be repeating yourself or cluttering the thread.
-
-When you do reply:
-${VOICE}
-- Reference what someone actually said. Keep it warm and inclusive. No politics/religion/sensitive topics.
-- Plain text. No markdown headers.
-
-Pick ONE reaction emoji from: ${REPLY_EMOJI.join(", ")}.
-
-Respond with ONLY a JSON object:
-{"emoji": "<one emoji name>", "shouldReply": <true or false>, "reply": "<your one-line reply, or empty string>"}`;
-
-/**
- * Decide whether/how Buddy engages with a reply in one of its discussion threads.
- * @returns {Promise<{emoji: string, shouldReply: boolean, reply: string}>}
- */
-export async function generateDiscussionReply({ apiKey, model, thread, botUserId }) {
-  const transcript = (thread || [])
-    .filter((m) => m.text && m.text.trim())
-    .map((m) => (m.user === botUserId ? "You (Buddy)" : `Member ${m.user ?? "?"}`) + ": " + m.text.trim())
-    .join("\n");
-  try {
-    const raw = await callClaude({
-      apiKey,
-      model,
-      system: ENGAGE_PROMPT,
-      userPrompt: `The discussion thread so far:\n\n${transcript}\n\nDecide whether to chime in.`,
-      maxTokens: 200,
-    });
-    const parsed = JSON.parse((raw.match(/\{[\s\S]*\}/) || ["{}"])[0]);
-    const emoji = REPLY_EMOJI.includes(parsed.emoji) ? parsed.emoji : "eyes";
-    const reply = (parsed.reply ?? "").trim();
-    const shouldReply = parsed.shouldReply === true && reply.length > 0;
-    return { emoji, shouldReply, reply };
-  } catch (err) {
-    console.error("generateDiscussionReply failed:", err.message);
-    return { emoji: "eyes", shouldReply: false, reply: "" };
   }
 }
 

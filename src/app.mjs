@@ -20,7 +20,7 @@ import {
   getRecentBotPosts,
 } from "./slack.mjs";
 import { generateHype, generateReply } from "./hype.mjs";
-import { generateQuestion, generateDiscussionReply } from "./discussion.mjs";
+import { generateQuestion } from "./discussion.mjs";
 
 const {
   SLACK_BOT_TOKEN,
@@ -125,9 +125,8 @@ function shouldForward(e) {
 
 /**
  * The slow path. Two modes:
- *   - Interactive: Buddy is tagged (@Buddy), OR someone replies in a thread
- *     Buddy is already part of. Answer the question/comment, using the thread
- *     as context.
+ *   - Interactive: Buddy is tagged (@Buddy). Answer the question/comment, using
+ *     the thread as context. Buddy only speaks inside threads when tagged.
  *   - Ambient: a fresh top-level post — always react; reply only if warranted.
  */
 async function processMessage(e) {
@@ -136,59 +135,28 @@ async function processMessage(e) {
     const mentioned = me && e.text.includes(`<@${me}>`);
     const isThreadReply = e.thread_ts && e.thread_ts !== e.ts;
 
-    // Pull thread context when the message lives in a thread. Never let a
-    // context-fetch failure block a reply — degrade to no context instead.
-    let thread = [];
-    if (isThreadReply) {
-      try {
-        thread = await getThreadReplies(SLACK_BOT_TOKEN, {
-          channel: e.channel,
-          ts: e.thread_ts,
-        });
-      } catch (err) {
-        console.error("getThreadReplies failed, continuing without context:", err.message);
-      }
-    }
-
-    // Interactive if tagged anywhere, or an untagged reply in a thread Buddy is
-    // already in (someone is talking to it). Otherwise an unrelated thread reply.
-    const botInThread = me && thread.some((m) => m.user === me);
-    const interactive = mentioned || (isThreadReply && botInThread);
-    if (isThreadReply && !interactive) return;
+    // Only engage in threads when explicitly tagged. Never auto-reply to thread
+    // chatter — including replies under Buddy's own posts/questions.
+    if (isThreadReply && !mentioned) return;
 
     // Reply into the existing thread if there is one, else start one.
     const threadTs = e.thread_ts || e.ts;
 
-    if (interactive) {
-      // Discussion thread: someone is weighing in on a question Buddy posted to
-      // #random (thread root is Buddy's). Host the thread — react, and chime in
-      // when it adds energy — rather than answering like a tagged question.
-      const isDiscussionThread =
-        RANDOM_CHANNEL_ID &&
-        e.channel === RANDOM_CHANNEL_ID &&
-        thread[0] &&
-        thread[0].user === me;
-
-      if (isDiscussionThread && !mentioned) {
-        const { emoji, shouldReply, reply: text } = await generateDiscussionReply({
-          apiKey: ANTHROPIC_API_KEY,
-          model: ANTHROPIC_MODEL,
-          thread,
-          botUserId: me,
-        });
-        const tasks = [
-          addReaction(SLACK_BOT_TOKEN, { channel: e.channel, timestamp: e.ts, name: emoji }),
-        ];
-        if (shouldReply) {
-          tasks.push(
-            postMessage(SLACK_BOT_TOKEN, { channel: e.channel, text, thread_ts: threadTs })
-          );
+    if (mentioned) {
+      // Tagged: pull thread context (if any), then answer. Never let a
+      // context-fetch failure block the reply — degrade to no context.
+      let thread = [];
+      if (isThreadReply) {
+        try {
+          thread = await getThreadReplies(SLACK_BOT_TOKEN, {
+            channel: e.channel,
+            ts: e.thread_ts,
+          });
+        } catch (err) {
+          console.error("getThreadReplies failed, continuing without context:", err.message);
         }
-        await Promise.allSettled(tasks);
-        return;
       }
 
-      // --- Interactive mode: answer the member, using the thread for context. ---
       const question = me ? e.text.split(`<@${me}>`).join(" ").trim() : e.text.trim();
       const { emoji, reply: answer } = await generateReply({
         apiKey: ANTHROPIC_API_KEY,
