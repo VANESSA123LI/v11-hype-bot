@@ -180,20 +180,19 @@ async function processMessage(e) {
       return;
     }
 
-    // --- Ambient hype mode: always react, reply only when warranted. ---
-    const { emoji, shouldReply, reply: hypeText } = await generateHype({
+    // --- Ambient hype mode: react only on notable messages, reply rarer still. ---
+    const { emoji, shouldReact, shouldReply, reply: hypeText } = await generateHype({
       apiKey: ANTHROPIC_API_KEY,
       model: ANTHROPIC_MODEL,
       text: e.text,
     });
 
-    const tasks = [
-      addReaction(SLACK_BOT_TOKEN, {
-        channel: e.channel,
-        timestamp: e.ts,
-        name: emoji,
-      }),
-    ];
+    const tasks = [];
+    if (shouldReact) {
+      tasks.push(
+        addReaction(SLACK_BOT_TOKEN, { channel: e.channel, timestamp: e.ts, name: emoji })
+      );
+    }
     if (shouldReply) {
       tasks.push(
         postMessage(SLACK_BOT_TOKEN, {
@@ -203,7 +202,7 @@ async function processMessage(e) {
         })
       );
     }
-    await Promise.allSettled(tasks);
+    if (tasks.length) await Promise.allSettled(tasks);
   } catch (err) {
     console.error("processMessage failed:", err);
   }
